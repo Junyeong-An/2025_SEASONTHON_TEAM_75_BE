@@ -489,10 +489,8 @@ class TrashServiceTest {
         }
 
         @Test
-        @DisplayName("현재 동작 문서화: 리다이렉트 타입이 없는 CAUTION 품목이면 타입이 null이 된다 (가드 조건 버그 의심)")
+        @DisplayName("리다이렉트 타입이 없는 CAUTION 품목이면 기존 타입을 유지한다")
         void 리다이렉트_없는_주의_품목() {
-            // createTrash는 redirectTrashType != null을 검사하지만
-            // changeTrashItem은 item.getTrashType() != null을 검사해 null 타입이 적용된다.
             // given
             TrashType type = petType();
             Trash trash = trashOf(owner, type, null);
@@ -507,8 +505,8 @@ class TrashServiceTest {
             TrashResultResponse response = trashService.changeTrashItem(1L, 5L, owner);
 
             // then
-            assertThat(trash.getTrashType()).isNull();
-            assertThat(response.typeCode()).isNull();
+            assertThat(trash.getTrashType()).isSameAs(type);
+            assertThat(response.typeCode()).isEqualTo(Type.PET.getTypeCode());
         }
     }
 
