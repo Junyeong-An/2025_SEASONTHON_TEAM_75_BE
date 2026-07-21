@@ -31,8 +31,10 @@ class UserCouponTest {
         @Test
         @DisplayName("생성 시 사용 가능 상태로 초기화된다")
         void 생성_초기값() {
+            // when
             UserCoupon userCoupon = UserCoupon.create(user, coupon);
 
+            // then
             assertThat(userCoupon.getStatus()).isEqualTo(CouponStatus.AVAILABLE);
             assertThat(userCoupon.getUsedAt()).isNull();
             assertThat(userCoupon.getUser()).isSameAs(user);
@@ -47,10 +49,13 @@ class UserCouponTest {
         @Test
         @DisplayName("사용하면 사용 완료 상태가 되고 사용 시각이 기록된다")
         void 사용_상태_전이() {
+            // given
             UserCoupon userCoupon = UserCoupon.create(user, coupon);
 
+            // when
             userCoupon.useCoupon();
 
+            // then
             assertThat(userCoupon.getStatus()).isEqualTo(CouponStatus.USED);
             assertThat(userCoupon.getUsedAt()).isNotNull();
         }
@@ -63,10 +68,13 @@ class UserCouponTest {
         @Test
         @DisplayName("QR 토큰과 이미지 URL을 저장한다")
         void QR_저장() {
+            // given
             UserCoupon userCoupon = UserCoupon.create(user, coupon);
 
+            // when
             userCoupon.attachQr("qr-token", "https://storage.test/qr.png");
 
+            // then
             assertThat(userCoupon.getQrToken()).isEqualTo("qr-token");
             assertThat(userCoupon.getQrImageUrl()).isEqualTo("https://storage.test/qr.png");
         }
@@ -76,8 +84,10 @@ class UserCouponTest {
         @ValueSource(strings = {"", "  "})
         @DisplayName("QR 토큰이 비어 있으면 VALIDATION_FAILED 예외가 발생한다")
         void 토큰_검증(String invalidToken) {
+            // given
             UserCoupon userCoupon = UserCoupon.create(user, coupon);
 
+            // when & then
             assertThatThrownBy(() ->
                 userCoupon.attachQr(invalidToken, "https://storage.test/qr.png"))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
@@ -89,8 +99,10 @@ class UserCouponTest {
         @ValueSource(strings = {"", "  "})
         @DisplayName("QR 이미지 URL이 비어 있으면 VALIDATION_FAILED 예외가 발생한다")
         void URL_검증(String invalidUrl) {
+            // given
             UserCoupon userCoupon = UserCoupon.create(user, coupon);
 
+            // when & then
             assertThatThrownBy(() -> userCoupon.attachQr("qr-token", invalidUrl))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));

@@ -75,6 +75,7 @@ class CouponStoreServiceTest {
     @Test
     @DisplayName("구매 성공 시 재고 차감, 포인트 사용, QR 발급까지 수행한다")
     void 구매_성공() {
+        // given
         Coupon coupon = CouponFixture.builder(10L, partner)
             .totalStock(10)
             .issuedCount(3)
@@ -94,9 +95,11 @@ class CouponStoreServiceTest {
         given(fileStoragePort.uploadFile(eq("user-coupon/100/qr.png"), eq("image/png"), any()))
             .willReturn("https://storage.test/user-coupon/100/qr.png");
 
+        // when
         PurchaseUserCouponResponse response =
             couponStoreService.purchaseCoupon(new CouponPurchaseRequest(10L), user);
 
+        // then
         assertThat(coupon.getIssuedCount()).isEqualTo(4);
         verify(pointService).usePoint(user.getId(), 3000, PointReason.COUPON_PURCHASE, 10L);
 
@@ -119,8 +122,10 @@ class CouponStoreServiceTest {
     @Test
     @DisplayName("존재하지 않는 쿠폰이면 COUPON_NOT_FOUND 예외가 발생한다")
     void 쿠폰_없음() {
+        // given
         given(couponRepository.findByIdFetchPartner(anyLong())).willReturn(Optional.empty());
 
+        // when & then
         assertThatThrownBy(() ->
             couponStoreService.purchaseCoupon(new CouponPurchaseRequest(99L), user))
             .isInstanceOfSatisfying(BusinessException.class, e ->
@@ -130,11 +135,13 @@ class CouponStoreServiceTest {
     @Test
     @DisplayName("비활성 쿠폰이면 COUPON_NOT_AVAILABLE 예외가 발생하고 포인트는 차감되지 않는다")
     void 비활성_쿠폰() {
+        // given
         Coupon coupon = CouponFixture.builder(10L, partner)
             .isActive(false)
             .build();
         given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
 
+        // when & then
         assertThatThrownBy(() ->
             couponStoreService.purchaseCoupon(new CouponPurchaseRequest(10L), user))
             .isInstanceOfSatisfying(BusinessException.class, e ->
@@ -146,12 +153,14 @@ class CouponStoreServiceTest {
     @Test
     @DisplayName("재고가 소진된 쿠폰이면 COUPON_OUT_OF_STOCK 예외가 발생하고 포인트는 차감되지 않는다")
     void 재고_소진() {
+        // given
         Coupon coupon = CouponFixture.builder(10L, partner)
             .totalStock(5)
             .issuedCount(5)
             .build();
         given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
 
+        // when & then
         assertThatThrownBy(() ->
             couponStoreService.purchaseCoupon(new CouponPurchaseRequest(10L), user))
             .isInstanceOfSatisfying(BusinessException.class, e ->
@@ -162,6 +171,7 @@ class CouponStoreServiceTest {
     @Test
     @DisplayName("포인트가 부족하면 예외가 전파되고 보유 쿠폰은 저장되지 않는다")
     void 포인트_부족() {
+        // given
         Coupon coupon = CouponFixture.builder(10L, partner)
             .pointCost(3000)
             .build();
@@ -170,6 +180,7 @@ class CouponStoreServiceTest {
             .given(pointService)
             .usePoint(user.getId(), 3000, PointReason.COUPON_PURCHASE, 10L);
 
+        // when & then
         assertThatThrownBy(() ->
             couponStoreService.purchaseCoupon(new CouponPurchaseRequest(10L), user))
             .isInstanceOfSatisfying(BusinessException.class, e ->

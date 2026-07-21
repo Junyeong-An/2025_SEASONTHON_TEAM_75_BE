@@ -26,6 +26,7 @@ class CouponTest {
         @Test
         @DisplayName("생성 시 발급 수량 0, 활성 상태로 초기화된다")
         void 생성_초기값() {
+            // given
             CouponCreateRequest request = new CouponCreateRequest(
                 "어스어스 3000원 할인 쿠폰",
                 "어스어스에서 3000원 할인받을 수 있는 쿠폰",
@@ -36,8 +37,10 @@ class CouponTest {
                 100
             );
 
+            // when
             Coupon coupon = Coupon.create(request, partner);
 
+            // then
             assertThat(coupon.getIssuedCount()).isZero();
             assertThat(coupon.getIsActive()).isTrue();
             assertThat(coupon.getPartner()).isSameAs(partner);
@@ -58,37 +61,45 @@ class CouponTest {
         @Test
         @DisplayName("발급하면 발급 수량이 1 증가한다")
         void 발급_수량_증가() {
+            // given
             Coupon coupon = CouponFixture.builder(1L, partner)
                 .totalStock(10)
                 .issuedCount(3)
                 .build();
 
+            // when
             coupon.issue();
 
+            // then
             assertThat(coupon.getIssuedCount()).isEqualTo(4);
         }
 
         @Test
         @DisplayName("마지막 남은 한 장까지 발급할 수 있다")
         void 마지막_한장_발급() {
+            // given
             Coupon coupon = CouponFixture.builder(1L, partner)
                 .totalStock(1)
                 .issuedCount(0)
                 .build();
 
+            // when
             coupon.issue();
 
+            // then
             assertThat(coupon.getIssuedCount()).isEqualTo(1);
         }
 
         @Test
         @DisplayName("재고가 모두 소진되면 COUPON_OUT_OF_STOCK 예외가 발생하고 수량은 변하지 않는다")
         void 재고_소진_예외() {
+            // given
             Coupon coupon = CouponFixture.builder(1L, partner)
                 .totalStock(5)
                 .issuedCount(5)
                 .build();
 
+            // when & then
             assertThatThrownBy(coupon::issue)
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COUPON_OUT_OF_STOCK));
@@ -103,10 +114,13 @@ class CouponTest {
         @Test
         @DisplayName("null 필드는 기존 값을 유지한다")
         void null_필드_유지() {
+            // given
             Coupon coupon = CouponFixture.coupon(1L, partner);
 
+            // when
             coupon.applyUpdate(null, null, null, null, null, null, null, null);
 
+            // then
             assertThat(coupon.getTitle()).isEqualTo("어스어스 3000원 할인 쿠폰");
             assertThat(coupon.getContent()).isEqualTo("어스어스에서 3000원 할인받을 수 있는 쿠폰");
             assertThat(coupon.getType()).isEqualTo(CouponType.OFFLINE);
@@ -120,10 +134,13 @@ class CouponTest {
         @Test
         @DisplayName("빈 문자열 제목과 내용은 무시된다")
         void 빈_문자열_무시() {
+            // given
             Coupon coupon = CouponFixture.coupon(1L, partner);
 
+            // when
             coupon.applyUpdate("  ", "  ", null, null, null, null, null, null);
 
+            // then
             assertThat(coupon.getTitle()).isEqualTo("어스어스 3000원 할인 쿠폰");
             assertThat(coupon.getContent()).isEqualTo("어스어스에서 3000원 할인받을 수 있는 쿠폰");
         }
@@ -131,10 +148,13 @@ class CouponTest {
         @Test
         @DisplayName("값이 있는 필드만 반영된다")
         void 부분_수정() {
+            // given
             Coupon coupon = CouponFixture.coupon(1L, partner);
 
+            // when
             coupon.applyUpdate("새 제목", null, null, 500, null, null, null, false);
 
+            // then
             assertThat(coupon.getTitle()).isEqualTo("새 제목");
             assertThat(coupon.getPointCost()).isEqualTo(500);
             assertThat(coupon.getIsActive()).isFalse();
@@ -144,11 +164,13 @@ class CouponTest {
         @Test
         @DisplayName("재고를 이미 발급된 수량보다 작게 줄이면 예외가 발생한다")
         void 재고_축소_불가() {
+            // given
             Coupon coupon = CouponFixture.builder(1L, partner)
                 .totalStock(10)
                 .issuedCount(5)
                 .build();
 
+            // when & then
             assertThatThrownBy(() ->
                 coupon.applyUpdate(null, null, null, null, null, null, 3, null))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -158,13 +180,16 @@ class CouponTest {
         @Test
         @DisplayName("재고를 발급된 수량과 같게 줄이는 것은 허용된다")
         void 재고_동일_축소_허용() {
+            // given
             Coupon coupon = CouponFixture.builder(1L, partner)
                 .totalStock(10)
                 .issuedCount(5)
                 .build();
 
+            // when
             coupon.applyUpdate(null, null, null, null, null, null, 5, null);
 
+            // then
             assertThat(coupon.getTotalStock()).isEqualTo(5);
         }
     }

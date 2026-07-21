@@ -57,6 +57,7 @@ class CouponServiceTest {
         @Test
         @DisplayName("인증 정보가 없으면 ACCESS_DENIED 예외가 발생한다")
         void 인증_정보_없음() {
+            // when & then
             assertThatThrownBy(() -> couponService.getPartnerCoupons(null))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED_EXCEPTION));
@@ -65,8 +66,10 @@ class CouponServiceTest {
         @Test
         @DisplayName("파트너가 연결되지 않은 일반 사용자는 ACCESS_DENIED 예외가 발생한다")
         void 일반_사용자_접근_불가() {
+            // given
             CustomerDetails userDetails = new CustomerDetails(UserFixture.user(3L));
 
+            // when & then
             assertThatThrownBy(() -> couponService.getPartnerCoupons(userDetails))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED_EXCEPTION));
@@ -80,13 +83,16 @@ class CouponServiceTest {
         @Test
         @DisplayName("자기 파트너 소속 쿠폰 목록을 응답으로 변환한다")
         void 쿠폰_목록_조회() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, myPartner);
             given(couponRepository.findAllByPartnerIdFetch(myPartner.getId()))
                 .willReturn(List.of(coupon));
 
+            // when
             List<PartnerCouponResponse> responses =
                 couponService.getPartnerCoupons(partnerDetails);
 
+            // then
             assertThat(responses).hasSize(1);
             assertThat(responses.get(0).couponId()).isEqualTo(10L);
             assertThat(responses.get(0).title()).isEqualTo(coupon.getTitle());
@@ -100,20 +106,25 @@ class CouponServiceTest {
         @Test
         @DisplayName("자기 파트너의 쿠폰은 삭제할 수 있다")
         void 본인_쿠폰_삭제() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, myPartner);
             given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
 
+            // when
             couponService.deleteCoupon(partnerDetails, 10L);
 
+            // then
             verify(couponRepository).delete(coupon);
         }
 
         @Test
         @DisplayName("다른 파트너의 쿠폰을 삭제하면 ACCESS_DENIED 예외가 발생한다")
         void 다른_파트너_쿠폰_삭제_불가() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, otherPartner);
             given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
 
+            // when & then
             assertThatThrownBy(() -> couponService.deleteCoupon(partnerDetails, 10L))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED_EXCEPTION));
@@ -123,8 +134,10 @@ class CouponServiceTest {
         @Test
         @DisplayName("존재하지 않는 쿠폰이면 ENTITY_NOT_FOUND 예외가 발생한다")
         void 쿠폰_없음() {
+            // given
             given(couponRepository.findByIdFetchPartner(anyLong())).willReturn(Optional.empty());
 
+            // when & then
             assertThatThrownBy(() -> couponService.deleteCoupon(partnerDetails, 99L))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ENTITY_NOT_FOUND));
@@ -138,14 +151,17 @@ class CouponServiceTest {
         @Test
         @DisplayName("자기 파트너의 쿠폰 정보를 수정한다")
         void 본인_쿠폰_수정() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, myPartner);
             given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
             CouponUpdateRequest request = new CouponUpdateRequest(
                 "수정된 제목", null, null, null, null, null, null, null);
 
+            // when
             CouponCreateResponse response =
                 couponService.updateCoupon(partnerDetails, 10L, request);
 
+            // then
             assertThat(coupon.getTitle()).isEqualTo("수정된 제목");
             assertThat(response.title()).isEqualTo("수정된 제목");
             assertThat(response.couponId()).isEqualTo(10L);
@@ -154,11 +170,13 @@ class CouponServiceTest {
         @Test
         @DisplayName("다른 파트너의 쿠폰을 수정하면 ACCESS_DENIED 예외가 발생하고 값이 유지된다")
         void 다른_파트너_쿠폰_수정_불가() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, otherPartner);
             given(couponRepository.findByIdFetchPartner(10L)).willReturn(Optional.of(coupon));
             CouponUpdateRequest request = new CouponUpdateRequest(
                 "수정된 제목", null, null, null, null, null, null, null);
 
+            // when & then
             assertThatThrownBy(() -> couponService.updateCoupon(partnerDetails, 10L, request))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED_EXCEPTION));
@@ -173,12 +191,15 @@ class CouponServiceTest {
         @Test
         @DisplayName("보유 쿠폰을 사용 완료 상태로 전이시킨다")
         void 쿠폰_사용() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, myPartner);
             UserCoupon userCoupon = UserCoupon.create(UserFixture.user(5L), coupon);
             given(userCouponRepository.findById(100L)).willReturn(Optional.of(userCoupon));
 
+            // when
             couponService.useCoupon(partnerDetails, 100L);
 
+            // then
             assertThat(userCoupon.getStatus()).isEqualTo(CouponStatus.USED);
             assertThat(userCoupon.getUsedAt()).isNotNull();
         }
@@ -186,8 +207,10 @@ class CouponServiceTest {
         @Test
         @DisplayName("존재하지 않는 보유 쿠폰이면 ENTITY_NOT_FOUND 예외가 발생한다")
         void 보유_쿠폰_없음() {
+            // given
             given(userCouponRepository.findById(anyLong())).willReturn(Optional.empty());
 
+            // when & then
             assertThatThrownBy(() -> couponService.useCoupon(partnerDetails, 99L))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ENTITY_NOT_FOUND));
@@ -197,10 +220,12 @@ class CouponServiceTest {
         @Disabled("버그 재현: useCoupon은 쿠폰이 요청 파트너 소속인지 검증하지 않아 다른 파트너의 쿠폰도 사용 처리된다. 소유권 검증 추가(fix) 후 활성화 예정")
         @DisplayName("다른 파트너 소속 쿠폰을 사용하면 ACCESS_DENIED 예외가 발생해야 한다")
         void 다른_파트너_쿠폰_사용_불가() {
+            // given
             Coupon coupon = CouponFixture.coupon(10L, otherPartner);
             UserCoupon userCoupon = UserCoupon.create(UserFixture.user(5L), coupon);
             given(userCouponRepository.findById(100L)).willReturn(Optional.of(userCoupon));
 
+            // when & then
             assertThatThrownBy(() -> couponService.useCoupon(partnerDetails, 100L))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED_EXCEPTION));
