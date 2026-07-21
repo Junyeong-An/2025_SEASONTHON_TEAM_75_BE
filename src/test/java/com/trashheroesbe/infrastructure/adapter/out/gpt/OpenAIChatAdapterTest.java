@@ -206,10 +206,8 @@ class OpenAIChatAdapterTest {
         }
 
         @Test
-        @DisplayName("현재 동작 문서화: 빈 응답도 EMPTY_GPT_RESPONSE가 아닌 ERROR_GPT_CALL로 감싸진다")
+        @DisplayName("빈 응답이면 EMPTY_GPT_RESPONSE 예외가 발생한다")
         void 빈_응답_에러코드() {
-            // parseSimilarItemNameResponse가 던지는 EMPTY_GPT_RESPONSE가
-            // 바깥 try-catch에서 ERROR_GPT_CALL로 재래핑되어 원래 에러 코드가 가려진다.
             // given
             stubTextResponse("");
 
@@ -217,7 +215,20 @@ class OpenAIChatAdapterTest {
             assertThatThrownBy(() ->
                 adapter.findSimilarTrashItem("조개껍질", List.of(), List.of()))
                 .isInstanceOfSatisfying(BusinessException.class, e ->
-                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ERROR_GPT_CALL));
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.EMPTY_GPT_RESPONSE));
+        }
+
+        @Test
+        @DisplayName("JSON으로 파싱할 수 없는 응답이면 FAIL_PARSING_RESPONSE 예외가 발생한다")
+        void 파싱_불가_응답() {
+            // given
+            stubTextResponse("JSON이 아닌 자유 서술 응답");
+
+            // when & then
+            assertThatThrownBy(() ->
+                adapter.findSimilarTrashItem("조개껍질", List.of(), List.of()))
+                .isInstanceOfSatisfying(BusinessException.class, e ->
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAIL_PARSING_RESPONSE));
         }
     }
 }
