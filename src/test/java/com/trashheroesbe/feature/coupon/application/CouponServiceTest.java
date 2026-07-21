@@ -24,7 +24,6 @@ import com.trashheroesbe.global.exception.BusinessException;
 import com.trashheroesbe.global.response.type.ErrorCode;
 import java.util.List;
 import java.util.Optional;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -217,8 +216,7 @@ class CouponServiceTest {
         }
 
         @Test
-        @Disabled("버그 재현: useCoupon은 쿠폰이 요청 파트너 소속인지 검증하지 않아 다른 파트너의 쿠폰도 사용 처리된다. 소유권 검증 추가(fix) 후 활성화 예정")
-        @DisplayName("다른 파트너 소속 쿠폰을 사용하면 ACCESS_DENIED 예외가 발생해야 한다")
+        @DisplayName("다른 파트너 소속 쿠폰을 사용하면 ACCESS_DENIED 예외가 발생한다")
         void 다른_파트너_쿠폰_사용_불가() {
             // given
             Coupon coupon = CouponFixture.coupon(10L, otherPartner);
