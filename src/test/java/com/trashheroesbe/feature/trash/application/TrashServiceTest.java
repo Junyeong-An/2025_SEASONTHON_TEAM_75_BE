@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -21,6 +23,9 @@ import com.trashheroesbe.feature.trash.domain.entity.TrashItem;
 import com.trashheroesbe.feature.trash.domain.entity.TrashType;
 import com.trashheroesbe.feature.trash.domain.type.ItemType;
 import com.trashheroesbe.feature.trash.domain.type.Type;
+import com.trashheroesbe.feature.point.dto.response.PointEarnedResult;
+import com.trashheroesbe.feature.trash.domain.entity.TrashPart;
+import com.trashheroesbe.feature.trash.dto.request.CreateTrashRequest;
 import com.trashheroesbe.feature.trash.dto.response.TrashItemResponse;
 import com.trashheroesbe.feature.trash.dto.response.TrashResultResponse;
 import com.trashheroesbe.feature.trash.infrastructure.PartRepository;
@@ -35,17 +40,24 @@ import com.trashheroesbe.fixture.UserFixture;
 import com.trashheroesbe.global.exception.BusinessException;
 import com.trashheroesbe.global.response.type.ErrorCode;
 import com.trashheroesbe.infrastructure.port.gpt.ChatAIClientPort;
+import com.trashheroesbe.infrastructure.port.gpt.ImageAnalysisBundle;
+import com.trashheroesbe.infrastructure.port.gpt.PartSuggestion;
 import com.trashheroesbe.infrastructure.port.s3.FileStoragePort;
+import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class TrashServiceTest {
@@ -111,6 +123,168 @@ class TrashServiceTest {
             .trashType(type)
             .trashItem(item)
             .build();
+    }
+
+    @Nested
+    @DisplayName("createTrash")
+    class CreateTrash {
+
+        private MockMultipartFile imageFile() {
+            return new MockMultipartFile(
+                "imageFile", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        }
+
+        @Test
+        @DisplayName("업로드와 AI 분석을 병렬 수행하고 매칭된 품목으로 저장 후 뱃지·포인트를 지급한다")
+        void 생성_성공() {
+            // given
+            TrashType petType = petType();
+            TrashType plasticType = TrashType.builder().id(2L).type(Type.PLASTIC).build();
+            TrashItem petItem = TrashItem.builder()
+                .id(5L).name("PET(투명 페트병)").itemType(ItemType.NORMAL).trashType(petType)
+                .build();
+            TrashItem etcItem = TrashItem.builder()
+                .id(6L).name("기타 플라스틱").itemType(ItemType.NORMAL).trashType(petType)
+                .build();
+
+            given(chatGPTClientPort.analyzeAll(any(byte[].class), eq("image/jpeg")))
+                .willReturn(new ImageAnalysisBundle(Type.PET, "PET(투명 페트병)", "투명 페트병",
+                    List.of(new PartSuggestion("뚜껑", Type.PLASTIC))));
+            given(fileStoragePort.uploadFile(anyString(), eq("image/jpeg"), any(byte[].class)))
+                .willReturn("https://storage.test/trash/stored.jpg");
+            given(trashItemRepository.findByTrashType_Type(Type.PET))
+                .willReturn(List.of(petItem, etcItem));
+            given(trashTypeRepository.findByType(Type.PET)).willReturn(Optional.of(petType));
+            given(trashItemRepository.findByTrashTypeAndName(petType, "PET(투명 페트병)"))
+                .willReturn(Optional.of(petItem));
+            given(trashRepository.save(any(Trash.class))).willAnswer(inv -> inv.getArgument(0));
+            given(pointService.grantPointsForTrash(eq(1L), any()))
+                .willReturn(new PointEarnedResult(30, LocalDateTime.now()));
+            given(trashTypeRepository.findByType(Type.PLASTIC))
+                .willReturn(Optional.of(plasticType));
+            given(partRepository.findByTrashTypeAndName(plasticType, "뚜껑"))
+                .willReturn(Optional.of(
+                    Part.builder().id(7L).name("뚜껑").trashType(plasticType).build()));
+
+            // when
+            TrashResultResponse response =
+                trashService.createTrash(new CreateTrashRequest(imageFile()), owner);
+
+            // then
+            assertThat(response.name()).isEqualTo("투명 페트병");
+            assertThat(response.typeCode()).isEqualTo(Type.PET.getTypeCode());
+            assertThat(response.point().earnPoints()).isEqualTo(30);
+
+            ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+            verify(fileStoragePort)
+                .uploadFile(keyCaptor.capture(), eq("image/jpeg"), any(byte[].class));
+            assertThat(keyCaptor.getValue()).startsWith("trash/").endsWith(".jpg");
+
+            verify(chatGPTClientPort).analyzeAll(any(byte[].class), eq("image/jpeg"));
+            verify(trashItemRepository).findByTrashTypeAndName(petType, "PET(투명 페트병)");
+            verify(badgeService).onTrashAnalysisCompleted(1L, Type.PET);
+            verify(trashPartRepository).save(any(TrashPart.class));
+        }
+
+        @Test
+        @DisplayName("요약명이 품목 목록과 매칭되지 않으면 기타 품목으로 저장한다")
+        void 기타_품목_폴백() {
+            // given
+            TrashType petType = petType();
+            TrashItem petItem = TrashItem.builder()
+                .id(5L).name("PET(투명 페트병)").itemType(ItemType.NORMAL).trashType(petType)
+                .build();
+            TrashItem etcItem = TrashItem.builder()
+                .id(6L).name("기타 플라스틱").itemType(ItemType.NORMAL).trashType(petType)
+                .build();
+
+            given(chatGPTClientPort.analyzeAll(any(byte[].class), eq("image/jpeg")))
+                .willReturn(new ImageAnalysisBundle(Type.PET, null, "정체불명", List.of()));
+            given(fileStoragePort.uploadFile(anyString(), eq("image/jpeg"), any(byte[].class)))
+                .willReturn("https://storage.test/trash/stored.jpg");
+            given(trashItemRepository.findByTrashType_Type(Type.PET))
+                .willReturn(List.of(petItem, etcItem));
+            given(trashTypeRepository.findByType(Type.PET)).willReturn(Optional.of(petType));
+            given(trashItemRepository.findByTrashTypeAndName(petType, "기타 플라스틱"))
+                .willReturn(Optional.of(etcItem));
+            given(trashRepository.save(any(Trash.class))).willAnswer(inv -> inv.getArgument(0));
+            given(pointService.grantPointsForTrash(eq(1L), any()))
+                .willReturn(new PointEarnedResult(10, LocalDateTime.now()));
+
+            // when
+            TrashResultResponse response =
+                trashService.createTrash(new CreateTrashRequest(imageFile()), owner);
+
+            // then
+            assertThat(response.name()).isEqualTo("정체불명");
+            verify(trashItemRepository).findByTrashTypeAndName(petType, "기타 플라스틱");
+            verify(trashPartRepository, never()).save(any(TrashPart.class));
+        }
+
+        @Test
+        @DisplayName("AI 분석 결과가 없으면 UNKNOWN 타입으로 저장된다")
+        void 분석_실패_UNKNOWN_폴백() {
+            // given
+            TrashType unknownType = TrashType.builder().id(9L).type(Type.UNKNOWN).build();
+            given(chatGPTClientPort.analyzeAll(any(byte[].class), eq("image/jpeg")))
+                .willReturn(null);
+            given(fileStoragePort.uploadFile(anyString(), eq("image/jpeg"), any(byte[].class)))
+                .willReturn("https://storage.test/trash/stored.jpg");
+            given(trashTypeRepository.findByType(Type.UNKNOWN))
+                .willReturn(Optional.of(unknownType));
+            given(trashRepository.save(any(Trash.class))).willAnswer(inv -> inv.getArgument(0));
+            given(pointService.grantPointsForTrash(eq(1L), any()))
+                .willReturn(new PointEarnedResult(10, LocalDateTime.now()));
+
+            // when
+            TrashResultResponse response =
+                trashService.createTrash(new CreateTrashRequest(imageFile()), owner);
+
+            // then
+            assertThat(response.typeCode()).isEqualTo(Type.UNKNOWN.getTypeCode());
+            assertThat(response.name()).isEqualTo(Type.UNKNOWN.getNameKo());
+            verify(badgeService).onTrashAnalysisCompleted(1L, Type.UNKNOWN);
+            verify(trashPartRepository, never()).save(any(TrashPart.class));
+        }
+
+        @Test
+        @DisplayName("DB 저장에 실패하면 업로드된 S3 파일을 보상 삭제하고 예외를 전파한다")
+        void DB_실패시_보상_삭제() {
+            // given
+            given(chatGPTClientPort.analyzeAll(any(byte[].class), eq("image/jpeg")))
+                .willReturn(null);
+            given(fileStoragePort.uploadFile(anyString(), eq("image/jpeg"), any(byte[].class)))
+                .willReturn("https://storage.test/trash/stored.jpg");
+            given(trashTypeRepository.findByType(Type.UNKNOWN))
+                .willThrow(new IllegalStateException("DB 연결 실패"));
+
+            // when & then
+            assertThatThrownBy(() ->
+                trashService.createTrash(new CreateTrashRequest(imageFile()), owner))
+                .isInstanceOf(IllegalStateException.class);
+            verify(fileStoragePort).deleteFileByUrl("https://storage.test/trash/stored.jpg");
+            verify(trashRepository, never()).save(any(Trash.class));
+        }
+
+        @Test
+        @DisplayName("파일을 읽을 수 없으면 INTERNAL_SERVER_ERROR 예외가 발생하고 외부 호출은 하지 않는다")
+        void 파일_읽기_실패() throws IOException {
+            // given
+            MultipartFile brokenFile = mock(MultipartFile.class);
+            given(brokenFile.isEmpty()).willReturn(false);
+            given(brokenFile.getContentType()).willReturn("image/jpeg");
+            given(brokenFile.getSize()).willReturn(3L);
+            given(brokenFile.getOriginalFilename()).willReturn("photo.jpg");
+            given(brokenFile.getBytes()).willThrow(new IOException("파일 읽기 실패"));
+
+            // when & then
+            assertThatThrownBy(() ->
+                trashService.createTrash(new CreateTrashRequest(brokenFile), owner))
+                .isInstanceOfSatisfying(BusinessException.class, e ->
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR));
+            verify(fileStoragePort, never()).uploadFile(anyString(), anyString(), any(byte[].class));
+            verify(chatGPTClientPort, never()).analyzeAll(any(byte[].class), anyString());
+        }
     }
 
     @Nested
