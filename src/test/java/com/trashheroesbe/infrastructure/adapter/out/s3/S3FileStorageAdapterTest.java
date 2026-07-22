@@ -109,10 +109,20 @@ class S3FileStorageAdapterTest {
         }
 
         @Test
-        @DisplayName("다른 호스트라도 경로가 버킷으로 시작하면 키를 추출해 삭제한다")
-        void 경로_버킷_삭제() {
+        @DisplayName("경로가 버킷으로 시작해도 허용된 호스트가 아니면 거부한다")
+        void 다른_호스트_거부() {
+            // when & then
+            assertThatThrownBy(() -> adapter.deleteFileByUrl(
+                "https://other-host.test/" + BUCKET + "/trash/photo.jpg"))
+                .isInstanceOf(IllegalArgumentException.class);
+            verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        }
+
+        @Test
+        @DisplayName("허용된 호스트면 base 경로와 달라도 버킷 경로에서 키를 추출해 삭제한다")
+        void 동일_호스트_경로_삭제() {
             // when
-            adapter.deleteFileByUrl("https://other-host.test/" + BUCKET + "/trash/photo.jpg");
+            adapter.deleteFileByUrl("https://objectstorage.test/" + BUCKET + "/trash/photo.jpg");
 
             // then
             ArgumentCaptor<DeleteObjectRequest> captor =
