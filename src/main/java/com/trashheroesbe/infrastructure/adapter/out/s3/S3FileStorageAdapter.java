@@ -84,7 +84,12 @@ public class S3FileStorageAdapter implements FileStoragePort {
         }
 
         try {
-            String path = URI.create(normalizedFileUrl).getPath();
+            URI fileUri = URI.create(normalizedFileUrl);
+            String allowedHost = URI.create(normalizedBaseUrl).getHost();
+            if (fileUri.getHost() == null || !fileUri.getHost().equals(allowedHost)) {
+                throw invalidFileUrl(normalizedFileUrl);
+            }
+            String path = fileUri.getPath();
             String normalizedPath = path.startsWith("/") ? path.substring(1) : path;
             if (!normalizedPath.startsWith(bucketPrefix)) {
                 throw invalidFileUrl(normalizedFileUrl);

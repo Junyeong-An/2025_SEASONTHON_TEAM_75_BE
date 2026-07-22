@@ -215,6 +215,8 @@ public class OpenAIChatAdapter implements ChatAIClientPort {
 
             return parseSimilarItemNameResponse(gptResponse);
 
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             throw new BusinessException(ERROR_GPT_CALL);
         }

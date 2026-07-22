@@ -123,6 +123,9 @@ public class CouponService {
 
         UserCoupon userCoupon = userCouponRepository.findById(userCouponId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ENTITY_NOT_FOUND));
+        if (!userCoupon.getCoupon().getPartner().getId().equals(partner.getId())) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED_EXCEPTION);
+        }
         userCoupon.useCoupon();
     }
 

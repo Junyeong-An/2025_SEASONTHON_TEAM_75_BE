@@ -438,7 +438,7 @@ public class TrashService {
 
         trash.applyItem(item);
 
-        if (item.getItemType() == ItemType.CAUTION && item.getTrashType() != null) {
+        if (item.getItemType() == ItemType.CAUTION && item.getRedirectTrashType() != null) {
             trash.applyAnalysis(item.getRedirectTrashType());
         }
 
